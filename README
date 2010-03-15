@@ -1,0 +1,17 @@
+
+Network.Websocket
+-----------------
+
+A Websocket server library for Haskell.
+
+
+
+Example
+-------
+
+A simple echo server is provided in the examples/ directory. You can
+build it by running this from the root of the project tree:
+
+  ghc --make examples/echo.hs -o echo
+
+Then, point your web browser to examples/test.html.
