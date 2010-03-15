@@ -1,4 +1,6 @@
-
+-- | Library for creating Websocket servers.  Some parts cribbed from
+-- Jeff Foster's blog post at
+-- <http://www.fatvat.co.uk/2010/01/web-sockets-and-haskell.html>
 module Network.Websocket( Config(..), WS(..), startServer, send) where
 
     import Char
