@@ -1,5 +1,6 @@
 Name:		network-websocket
 Synopsis: 	WebSocket library
+Homepage:	http://github.com/michaelmelanson/network-websocket
 Version:	0.1
 Cabal-Version:	>= 1.2
 License:	BSD3
