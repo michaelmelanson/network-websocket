@@ -1,15 +1,41 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 -- | Library for creating Websocket servers.  Some parts cribbed from
 -- Jeff Foster's blog post at
 -- <http://www.fatvat.co.uk/2010/01/web-sockets-and-haskell.html>
-module Network.Websocket( Config(..), WS(..), startServer, send) where
+module Network.Websocket( Config(..), ConfigRestriction(..), WS(..),
+                          startServer, send ) where
 
-    import Char
+    import Char (chr)
     import Control.Concurrent
-    import Control.Monad (forever)
+    import Control.Exception hiding (catch)
+    import Control.Monad
+    import Data.Char (isSpace)
+    import Data.Maybe
     import qualified Network as N
     import qualified Network.Socket as NS
+    import Network.Web.HTTP
+    import Network.URI
+    import Network.Web.Server
     import System.IO
 
+
+    trim = f . f
+        where f = reverse.dropWhile isSpace
+
+    whenM b f = b >>= \b' -> when b' f
+
+    instance Show Request where
+        show req = let method = show $ reqMethod req
+                       uri    = show $ reqURI req
+                       fields = show $ reqFields req
+                   in method ++ " " ++ uri ++ "\n" ++ fields
+
+    data ConfigRestriction  = Any | Only [String]
+    restrictionValid x Any = True
+    restrictionValid x (Only xs) = elem x xs
+                                   
+    instance Eq Status
 
 
     -- | Server configuration structure
@@ -18,11 +44,11 @@ module Network.Websocket( Config(..), WS(..), startServer, send) where
           configPort :: Int,
 
           -- | The origin URL used in the handshake
-          configOrigin :: String,
+          configOrigins :: ConfigRestriction,
 
           -- |The location URL used in the handshake. This must match
           -- the Websocket url that the browsers connect to.
-          configLocation  :: String,
+          configDomains  :: ConfigRestriction,
 
           -- | The onopen callback, called when a socket is opened
           configOnOpen    :: WS -> IO (),
@@ -35,28 +61,35 @@ module Network.Websocket( Config(..), WS(..), startServer, send) where
         }
 
     -- | Connection state structure
-    data WS = WS { 
+    data WS = WS {
           -- | The server's configuration
-          config :: Config,
+          wsConfig :: Config,
 
           -- | The handle of the connected socket
-          handle :: Handle
+          wsHandle :: Handle
         }
-    
-    -- |Calls the server's onopen callback, then start reading
-    -- |messages. When the connection is terminated, the server's
-    -- |onclose callback is called.
+
+
+
+
+    -- | Calls the server's onopen callback, then start reading
+    -- messages. When the connection is terminated, the server's
+    -- onclose callback is called.
     listenLoop ws =
         do onopen ws
-           
+
            (forever $ do
               msg <- readFrame h
-              onmessage ws msg) `catch` (\e -> onclose ws)
+              onmessage ws msg)
+                      `catch`
+                      (\e -> onclose ws)
 
-        where c = config ws
-              h = handle ws
+           return ()
 
-              onopen    = configOnOpen c 
+        where c = wsConfig ws
+              h = wsHandle ws
+
+              onopen    = configOnOpen c
               onmessage = configOnMessage c
               onclose   = configOnClose c
 
@@ -73,27 +106,68 @@ module Network.Websocket( Config(..), WS(..), startServer, send) where
 
     sendFrame :: Handle -> String -> IO ()
     sendFrame h s = do
+      putStrLn $ "Sending message: " ++ s
       hPutChar h (chr 0)
-      hPutStr h s
+      hPutStr  h s
       hPutChar h (chr 255)
+      hFlush h
 
     -- | Send a message to the connected browser.
-    send ws = sendFrame (handle ws)
+    send ws = sendFrame (wsHandle ws)
 
-    accept config socket =
-        forever $ do
-          (h, _, _) <- N.accept socket
-          hPutStr h handshake
-          hSetBuffering h NoBuffering
-          let ws = WS { config = config, handle = h }
-          forkIO $ listenLoop ws
+    parseRequest req = do
+      upgrade  <- lookupField (FkOther "Upgrade") req
+      origin   <- lookupField (FkOther "Origin") req
+      host     <- lookupField FkHost req
+      hostURI  <- parseURI ("ws://" ++ host ++ "/")
+      hostAuth <- uriAuthority hostURI
+      let domain = uriRegName hostAuth
 
+      return (upgrade, origin, domain)
+
+    doWebSocket socket f =
+        bracket (do (h :: Handle, _, _) <- N.accept socket
+                    maybeReq <- receive h
+                    return (h, maybeReq))
+
+                (\(h,_) -> hClose h)
+
+                (\(h, maybeReq) ->
+                     case maybeReq of
+                       Nothing -> putStrLn "Got bad request"
+                       Just req -> f h req)
+
+    sendHandshake h origin location = hPutStr h handshake >> hFlush h
         where handshake = "HTTP/1.1 101 Web Socket Protocol Handshake\r\n\
                           \Upgrade: WebSocket\r\n\
                           \Connection: Upgrade\r\n\
-                          \WebSocket-Origin: " ++ (configOrigin config) ++ "\r\n\
-                          \WebSocket-Location: "++ (configLocation config) ++ "\r\n\
+                          \WebSocket-Origin: " ++ origin ++ "\r\n\
+                          \WebSocket-Location: "++ show location ++ "\r\n\
                           \WebSocket-Protocol: sample\r\n\r\n"
+
+
+    accept config socket =
+        forever $ doWebSocket socket $ \h req ->
+            do let (upgrade, origin, hostDomain) = case parseRequest req of
+                                                     Nothing -> throw (userError "Invalid request")
+                                                     Just a -> a
+                   location = (reqURI req) { uriScheme = "ws:" }
+                   ws = WS { wsConfig = config, wsHandle = h }
+
+               return $ assert (upgrade == "WebSocket") ()
+               return $ assert (restrictionValid origin (configOrigins config)) ()
+               return $ assert (restrictionValid hostDomain (configDomains config)) ()
+
+               sendHandshake h origin location
+
+               onOpen ws
+               (forever $ do msg <- readFrame h
+                             onMessage ws msg) `catch` (\e -> onClose ws)
+
+        where onOpen    = configOnOpen config
+              onMessage = configOnMessage config
+              onClose   = configOnClose config
+
 
     -- | Start a websocket server
     startServer config =

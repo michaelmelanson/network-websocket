@@ -15,13 +15,14 @@
         ws.onopen = function() { 
           $('#connectionStatus').text('Connection opened');
     
-          ws.send("This is a test");
-          ws.send("This is only a test");
-          ws.send("BOOM!");
+          ws.send("Testing");
+          ws.send("Testing");
+          ws.send("1 2 3");
+          ws.send("It works!");
         };
 
         ws.onmessage = function(evt) {
-          $('#output').append('<p>' + evt.data);
+          $('#output').append('<p>' + evt.data + '</p>');
         };
 
         ws.onclose = function() {

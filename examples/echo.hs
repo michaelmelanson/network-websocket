@@ -4,8 +4,8 @@ import qualified Network.Websocket as WS
 
 config = WS.Config {
            WS.configPort      = 9876,
-           WS.configOrigin    = "file://",
-           WS.configLocation  = "ws://localhost:9876/",
+           WS.configOrigins   = WS.Any,
+           WS.configDomains   = WS.Any,
            WS.configOnOpen    = onOpen,
            WS.configOnMessage = onMessage,
            WS.configOnClose   = onClose
