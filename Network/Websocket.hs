@@ -106,7 +106,6 @@ module Network.Websocket( Config(..), ConfigRestriction(..), WS(..),
 
     sendFrame :: Handle -> String -> IO ()
     sendFrame h s = do
-      putStrLn $ "Sending message: " ++ s
       hPutChar h (chr 0)
       hPutStr  h s
       hPutChar h (chr 255)
