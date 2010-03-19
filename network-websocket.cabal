@@ -1,5 +1,5 @@
 Name: network-websocket
-Version: 0.2.1
+Version: 0.3
 Stability: experimental
 Synopsis: WebSocket library
 Description: A library for creating Websocket servers
