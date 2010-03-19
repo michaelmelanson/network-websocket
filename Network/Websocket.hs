@@ -20,11 +20,6 @@ module Network.Websocket( Config(..), ConfigRestriction(..), WS(..),
     import System.IO
 
 
-    trim = f . f
-        where f = reverse.dropWhile isSpace
-
-    whenM b f = b >>= \b' -> when b' f
-
     instance Show Request where
         show req = let method = show $ reqMethod req
                        uri    = show $ reqURI req
@@ -69,31 +64,6 @@ module Network.Websocket( Config(..), ConfigRestriction(..), WS(..),
           wsHandle :: Handle
         }
 
-
-
-
-    -- | Calls the server's onopen callback, then start reading
-    -- messages. When the connection is terminated, the server's
-    -- onclose callback is called.
-    listenLoop ws =
-        do onopen ws
-
-           (forever $ do
-              msg <- readFrame h
-              onmessage ws msg)
-                      `catch`
-                      (\e -> onclose ws)
-
-           return ()
-
-        where c = wsConfig ws
-              h = wsHandle ws
-
-              onopen    = configOnOpen c
-              onmessage = configOnMessage c
-              onclose   = configOnClose c
-
-
     readFrame :: Handle -> IO String
     readFrame h = readUntil h ""
         where readUntil h str =
@@ -124,17 +94,18 @@ module Network.Websocket( Config(..), ConfigRestriction(..), WS(..),
 
       return (upgrade, origin, domain)
 
-    doWebSocket socket f =
-        bracket (do (h :: Handle, _, _) <- N.accept socket
-                    maybeReq <- receive h
-                    return (h, maybeReq))
+    doWebSocket socket f = do 
+        (h :: Handle, _, _) <- N.accept socket
+        forkIO $ bracket 
+            (do maybeReq <- receive h
+                return (h, maybeReq))
 
-                (\(h,_) -> hClose h)
+            (\(h,_) -> hClose h)
 
-                (\(h, maybeReq) ->
-                     case maybeReq of
-                       Nothing -> putStrLn "Got bad request"
-                       Just req -> f h req)
+            (\(h, maybeReq) ->
+                case maybeReq of
+                    Nothing -> putStrLn "Got bad request"
+                    Just req -> f h req)
 
     sendHandshake h origin location = hPutStr h handshake >> hFlush h
         where handshake = "HTTP/1.1 101 Web Socket Protocol Handshake\r\n\
@@ -146,7 +117,7 @@ module Network.Websocket( Config(..), ConfigRestriction(..), WS(..),
 
 
     accept config socket =
-        forever $ doWebSocket socket $ \h req ->
+        forever $ doWebSocket socket $ \h req -> 
             do let (upgrade, origin, hostDomain) = case parseRequest req of
                                                      Nothing -> throw (userError "Invalid request")
                                                      Just a -> a
@@ -171,7 +142,7 @@ module Network.Websocket( Config(..), ConfigRestriction(..), WS(..),
     -- | Start a websocket server
     startServer config =
         do let port = N.PortNumber $ fromIntegral (configPort config)
-           socket <- N.listenOn port
-           accept config socket
-           NS.sClose socket
+           bracket (N.listenOn port)
+                   NS.sClose
+                   (accept config)
            return ()
