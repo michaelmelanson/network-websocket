@@ -85,7 +85,7 @@ sendFrame h s = do
 send ws = sendFrame (wsHandle ws)
 
 parseRequest req = do
-  let getField f = fmap unpack $ lookupField f req
+  let getField f = unpack . lookupField f req
   upgrade  <- getField $ FkOther $ pack "Upgrade"
   origin   <- getField $ FkOther $ pack "Origin"
   host     <- getField $ FkHost
