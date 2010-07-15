@@ -112,8 +112,29 @@ sendHandshake h origin location = do
       \Upgrade: WebSocket\r\n\
       \Connection: Upgrade\r\n\
       \WebSocket-Origin: " ++ origin ++ "\r\n\
-      \WebSocket-Location: " ++ show location ++ "\r\n\
+      \WebSocket-Location: " ++ showUri location ++ "\r\n\
       \WebSocket-Protocol: sample\r\n\r\n"
+
+showUri uri = unpack $
+  (WURI.uriScheme uri ?++ "//")
+  ++ (case WURI.uriAuthority uri of
+       Nothing -> pack ""
+       Just uriAuth -> showUriAuth uriAuth)
+  ++ WURI.uriPath uri
+  ++ ("?" ++? WURI.uriQuery uri)
+  ++ ("#" ++? WURI.uriFragment uri)
+
+showUriAuth uriAuth =
+  (WURI.uriUserInfo uriAuth ?++ "@")
+  ++ WURI.uriRegName uriAuth
+  ++ (":" ++? WURI.uriPort uriAuth)
+
+a ?++ b
+  | unpack a == "" = pack ""
+  | True = a ++ pack b
+a ++? b
+  | unpack b == "" = pack ""
+  | True = pack a ++ b
 
 assertM x = assert x $ return ()
 
