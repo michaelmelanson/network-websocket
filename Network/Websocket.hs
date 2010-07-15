@@ -20,17 +20,11 @@ import Network.Web.URI as WURI
 import Network.Web.Server
 import System.IO
 import Data.ByteString.Char8 (pack, unpack)
-import Data.Monoid
-import Prelude hiding ((++), (.))
 
 restrictionValid _ Nothing = True
 restrictionValid r (Just rs) = elem r rs
                                
 instance Eq Status
-
-f . g = fmap f g
-
-a ++ b = mappend a b
 
 -- | Server configuration structure
 data Config = Config
@@ -85,7 +79,7 @@ sendFrame h s = do
 send ws = sendFrame (wsHandle ws)
 
 parseRequest req = do
-  let getField f = unpack . lookupField f req
+  let getField f = fmap unpack $ lookupField f req
   upgrade  <- getField $ FkOther $ pack "Upgrade"
   origin   <- getField $ FkOther $ pack "Origin"
   host     <- getField $ FkHost
@@ -97,7 +91,7 @@ parseRequest req = do
 doWebSocket socket f = do 
   (h :: Handle, _, _) <- N.accept socket
   forkIO $ bracket 
-    ((h,) . receive h)
+    (fmap (h,) $ receive h)
     (hClose . fst)
     (\(h, maybeReq) -> case maybeReq of
       Nothing -> putStrLn "Bad request received."
@@ -112,29 +106,8 @@ sendHandshake h origin location = do
       \Upgrade: WebSocket\r\n\
       \Connection: Upgrade\r\n\
       \WebSocket-Origin: " ++ origin ++ "\r\n\
-      \WebSocket-Location: " ++ showUri location ++ "\r\n\
+      \WebSocket-Location: " ++ show location ++ "\r\n\
       \WebSocket-Protocol: sample\r\n\r\n"
-
-showUri uri = unpack $
-  (WURI.uriScheme uri ?++ "//")
-  ++ (case WURI.uriAuthority uri of
-       Nothing -> pack ""
-       Just uriAuth -> showUriAuth uriAuth)
-  ++ WURI.uriPath uri
-  ++ ("?" ++? WURI.uriQuery uri)
-  ++ ("#" ++? WURI.uriFragment uri)
-
-showUriAuth uriAuth =
-  (WURI.uriUserInfo uriAuth ?++ "@")
-  ++ WURI.uriRegName uriAuth
-  ++ (":" ++? WURI.uriPort uriAuth)
-
-a ?++ b
-  | unpack a == "" = pack ""
-  | True = a ++ pack b
-a ++? b
-  | unpack b == "" = pack ""
-  | True = pack a ++ b
 
 assertM x = assert x $ return ()
 
