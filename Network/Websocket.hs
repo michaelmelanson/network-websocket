@@ -14,17 +14,13 @@ import Data.Char (isSpace)
 import Data.Maybe
 import qualified Network as N
 import qualified Network.Socket as NS
-import Network.Web.HTTP
-import Network.URI as URI
-import Network.Web.URI as WURI
-import Network.Web.Server
+import Network.URI
+import Network.HTTP
 import System.IO
 import Data.ByteString.Char8 (pack, unpack)
 
 restrictionValid _ Nothing = True
 restrictionValid r (Just rs) = elem r rs
-                               
-instance Eq Status
 
 -- | Server configuration structure
 data Config = Config
@@ -71,21 +67,22 @@ readFrame h = readUntil h ""
 sendFrame :: Handle -> String -> IO ()
 sendFrame h s = do
   hPutChar h (chr 0)
-  hPutStr  h s
+  hPutStr h s
   hPutChar h (chr 255)
   hFlush h
 
 -- | Send a message to the connected browser.
 send ws = sendFrame (wsHandle ws)
 
+parseRequest :: Request -> Maybe (String, String, String)
 parseRequest req = do
   let getField f = fmap unpack $ lookupField f req
   upgrade  <- getField $ FkOther $ pack "Upgrade"
   origin   <- getField $ FkOther $ pack "Origin"
   host     <- getField $ FkHost
-  hostURI  <- WURI.parseURI $ pack ("ws://" ++ host ++ "/")
-  hostAuth <- WURI.uriAuthority hostURI
-  let domain = WURI.uriRegName hostAuth
+  hostURI  <- parseURI $ pack ("ws://" ++ host ++ "/")
+  hostAuth <- uriAuthority hostURI
+  let domain = uriRegName hostAuth
   return (upgrade, origin, domain)
 
 doWebSocket socket f = do 
@@ -118,7 +115,7 @@ accept config socket = forever $
         case parseRequest req of
           Nothing -> throw (userError "Invalid request")
           Just a -> a
-      location = (reqURI req) { WURI.uriScheme = pack "ws:" }
+      location = (reqURI req) { uriScheme = pack "ws:" }
       ws = WS { wsConfig = config, wsHandle = h } in do
       assertM $ upgrade == "WebSocket"
       assertM $ restrictionValid origin $ configOrigins config

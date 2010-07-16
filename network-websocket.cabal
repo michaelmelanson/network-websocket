@@ -22,7 +22,7 @@ Flag BuildExamples
 Library
   Exposed-Modules: Network.Websocket
   Build-depends: base >=2 && <4, haskell98 -any, network -any,
-                 webserver -any, bytestring -any
+                 HTTP -any, bytestring -any
   extensions: TupleSections
 
 
